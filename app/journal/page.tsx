@@ -290,8 +290,8 @@ export default function VanguardEliteJournal() {
               startDate={new Date(new Date().setFullYear(new Date().getFullYear() - 1))} 
               endDate={new Date()} 
               values={heatmapValues} 
-              classForValue={(v) => !v ? 'color-empty' : v.pnl > 0 ? 'color-green' : v.pnl < 0 ? 'color-red' : 'color-neutral'} 
-              onClick={(v) => { if(v) setSelectedDay(v); }}
+              classForValue={(v: any) => !v ? 'color-empty' : v.pnl > 0 ? 'color-green' : v.pnl < 0 ? 'color-red' : 'color-neutral'} 
+              onClick={(v: any) => { if(v) setSelectedDay(v); }}
             />
           </div>
 
