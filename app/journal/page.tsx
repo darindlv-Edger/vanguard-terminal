@@ -83,7 +83,6 @@ export default function VanguardEliteJournal() {
     if (s) setAvailableStrategies(s);
   }
 
-  // PnL ENGINE: (Price Diff * Point Value * Quantity)
   const calculatePnL = (trade: any) => {
     if (!trade.exit_price || !trade.entry_price) return null;
     const diff = trade.side === 'SELL' 
@@ -97,7 +96,7 @@ export default function VanguardEliteJournal() {
     return diff * pointValue * (trade.contracts || 1);
   };
 
-  const totalPnL = useMemo(() => trades.reduce((sum, t) => sum + (calculatePnL(t) || 0), 0), [trades]);
+  const totalPnL = useMemo(() => trades.reduce((sum: number, t: any) => sum + (calculatePnL(t) || 0), 0), [trades]);
 
   const progressPercent = useMemo(() => {
     if (!settings) return 0;
@@ -106,9 +105,9 @@ export default function VanguardEliteJournal() {
   }, [totalPnL, settings]);
 
   const chartData = useMemo(() => {
-    const sorted = [...trades].filter(t => t.exit_price).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    const sorted = [...trades].filter((t: any) => t.exit_price).sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     let runningPnL = 0;
-    return sorted.map((t) => {
+    return sorted.map((t: any) => {
       runningPnL += (calculatePnL(t) || 0);
       return { name: t.created_at.split('T')[0], pnl: runningPnL };
     });
@@ -116,7 +115,7 @@ export default function VanguardEliteJournal() {
 
   const heatmapValues = useMemo(() => {
     const counts: any = {};
-    trades.forEach(t => {
+    trades.forEach((t: any) => {
       const date = t.created_at.split('T')[0];
       const pnl = calculatePnL(t) || 0;
       if (!counts[date]) counts[date] = { date, pnl: 0, trades: [] };
@@ -159,7 +158,6 @@ export default function VanguardEliteJournal() {
   return (
     <main className="p-4 md:p-8 bg-[#050505] text-[#e0e0e0] min-h-screen pt-32 selection:bg-emerald-500/30">
       
-      {/* 1. CUSTOM IMAGE LIGHTBOX (NO EXTERNAL LIB) */}
       <AnimatePresence>
         {activeImage && (
           <motion.div 
@@ -176,7 +174,6 @@ export default function VanguardEliteJournal() {
         )}
       </AnimatePresence>
 
-      {/* 2. TARGET CONFIG MODAL */}
       <AnimatePresence>
         {showSettings && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-xl p-6">
@@ -195,7 +192,6 @@ export default function VanguardEliteJournal() {
         )}
       </AnimatePresence>
 
-      {/* 3. CALENDAR DAY DETAIL MODAL */}
       <AnimatePresence>
         {selectedDay && (
           <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/90 backdrop-blur-md p-4" onClick={() => setSelectedDay(null)}>
@@ -226,7 +222,6 @@ export default function VanguardEliteJournal() {
       </AnimatePresence>
 
       <div className="max-w-[1600px] mx-auto space-y-6">
-        {/* HEADER */}
         <div className="flex justify-between items-end border-b border-white/5 pb-6">
           <div>
             <h1 className="text-[9px] font-black tracking-[0.5em] text-emerald-500 uppercase mb-2">Vanguard // Executive</h1>
@@ -326,7 +321,7 @@ export default function VanguardEliteJournal() {
               <tr><th className="p-8">Timestamp</th><th className="p-8">Asset</th><th className="p-8">Size</th><th className="p-8">Net PnL</th><th className="p-8">Evidence</th><th className="p-8 text-right">Action</th></tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {trades.map((trade) => {
+              {trades.map((trade: any) => {
                 const pnl = calculatePnL(trade);
                 const imgs = Array.isArray(trade.image_urls) ? trade.image_urls : [];
                 return (
@@ -342,7 +337,7 @@ export default function VanguardEliteJournal() {
                     </td>
                     <td className="p-8">
                        <div className="flex gap-2">
-                         {imgs.map((u, i) => (
+                         {imgs.map((u: any, i: number) => (
                            <div key={i} className="relative group/img cursor-zoom-in" onClick={() => setActiveImage(u)}>
                              <img src={u} className="w-12 h-12 object-cover rounded-lg border border-white/5 group-hover/img:opacity-50 transition-all" />
                              <ZoomIn className="absolute inset-0 m-auto opacity-0 group-hover/img:opacity-100 text-white" size={16} />
