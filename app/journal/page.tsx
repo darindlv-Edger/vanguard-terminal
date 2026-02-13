@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import CalendarHeatmap from 'react-calendar-heatmap';
-import { Target, AlertTriangle, Settings, TrendingUp, Trophy, X, ChevronRight, ZoomIn, RefreshCcw, ShieldCheck } from 'lucide-react';
+import { Target, AlertTriangle, Settings, TrendingUp, Trophy, X, ChevronRight, ZoomIn, RefreshCcw, ShieldCheck, Loader2 } from 'lucide-react';
 import 'react-calendar-heatmap/dist/styles.css';
 
 export default function VanguardEliteJournal() {
@@ -32,6 +32,7 @@ export default function VanguardEliteJournal() {
   const [status, setStatus] = useState(''); 
   const [tempImages, setTempImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   
   // Target Setting States
   const [firmName, setFirmName] = useState('TOPSTEP');
@@ -52,12 +53,12 @@ export default function VanguardEliteJournal() {
   }, [])
 
   const fetchSettings = async (userId: string) => {
-    const { data } = await supabase.from('user_settings').select('*').eq('user_id', userId).single();
+    const { data, error } = await supabase.from('user_settings').select('*').eq('user_id', userId).maybeSingle();
     if (data) {
       setSettings(data);
-      setFirmName(data.firm_name);
-      setProfitTarget(data.profit_target.toString());
-      setMaxLoss(data.max_loss.toString());
+      setFirmName(data.firm_name || 'TOPSTEP');
+      setProfitTarget(data.profit_target?.toString() || '3000');
+      setMaxLoss(data.max_loss?.toString() || '2000');
       setIsFunded(data.is_funded || false);
     } else {
       setShowSettings(true); 
@@ -65,36 +66,43 @@ export default function VanguardEliteJournal() {
   }
 
   const saveSettings = async () => {
+    setIsSavingSettings(true);
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const { error } = await supabase.from('user_settings').upsert({
-      user_id: user?.id,
+      user_id: user.id,
       firm_name: firmName,
       profit_target: parseFloat(profitTarget),
       max_loss: parseFloat(maxLoss),
       is_funded: isFunded
-    });
+    }, { onConflict: 'user_id' });
+
     if (!error) {
+      await fetchSettings(user.id);
       setShowSettings(false);
-      fetchSettings(user!.id);
+    } else {
+      console.error("Error saving settings:", error);
+      alert("Failed to save. Check if 'is_funded' column exists in Supabase.");
     }
+    setIsSavingSettings(false);
   };
 
   const resetAccount = async () => {
-    if (confirm("WARNING: This will delete ALL trades. Use this if you blew the account and are starting over. Proceed?")) {
+    if (confirm("NUCLEAR OPTION: This will delete ALL trades forever. Proceed?")) {
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from('trades').delete().eq('user_id', user?.id);
       if (!error) {
-        fetchAll();
+        setTrades([]);
         setShowSettings(false);
+        fetchAll();
       }
     }
   }
 
   const fetchAll = async () => {
     const { data: t } = await supabase.from('trades').select('*').order('created_at', { ascending: false })
-    const { data: s } = await supabase.from('strategies').select('*').order('name', { ascending: true })
     if (t) setTrades(t);
-    if (s) setAvailableStrategies(s);
   }
 
   const calculatePnL = (trade: any) => {
@@ -113,10 +121,11 @@ export default function VanguardEliteJournal() {
   const totalPnL = useMemo(() => trades.reduce((sum: number, t: any) => sum + (calculatePnL(t) || 0), 0), [trades]);
 
   const progressPercent = useMemo(() => {
-    if (!settings || isFunded) return 0;
-    const percent = (totalPnL / settings.profit_target) * 100;
+    const target = parseFloat(profitTarget) || 3000;
+    if (isFunded) return 0;
+    const percent = (totalPnL / target) * 100;
     return Math.min(Math.max(percent, -100), 100); 
-  }, [totalPnL, settings, isFunded]);
+  }, [totalPnL, profitTarget, isFunded]);
 
   const chartData = useMemo(() => {
     const sorted = [...trades].filter((t: any) => t.exit_price).sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -183,7 +192,6 @@ export default function VanguardEliteJournal() {
               initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
               src={activeImage} className="max-w-full max-h-full rounded-lg shadow-2xl"
             />
-            <button className="absolute top-8 right-8 text-white/40 hover:text-white"><X size={32}/></button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -206,45 +214,23 @@ export default function VanguardEliteJournal() {
                     onClick={() => setIsFunded(!isFunded)}
                     className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${isFunded ? 'bg-emerald-500 text-black' : 'bg-white/10 text-white/40'}`}
                   >
-                    {isFunded ? 'ACTIVE' : 'OFF'}
+                    {isFunded ? 'ON' : 'OFF'}
                   </button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 pt-4">
-                  <button onClick={saveSettings} className="py-5 bg-white text-black font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-emerald-500 transition-all">Initialize</button>
+                  <button 
+                    disabled={isSavingSettings}
+                    onClick={saveSettings} 
+                    className="py-5 bg-white text-black font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-emerald-500 transition-all flex items-center justify-center"
+                  >
+                    {isSavingSettings ? <Loader2 className="animate-spin" size={18}/> : 'Initialize'}
+                  </button>
                   <button onClick={resetAccount} className="py-5 bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-rose-500 hover:text-black transition-all flex items-center justify-center gap-2">
                     <RefreshCcw size={14}/> Reset
                   </button>
                 </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {selectedDay && (
-          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/90 backdrop-blur-md p-4" onClick={() => setSelectedDay(null)}>
-            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-[#0d0d0d] border border-white/10 p-8 rounded-[2rem] max-w-lg w-full" onClick={e => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                    <p className="text-emerald-500 font-mono text-[10px] uppercase tracking-widest">{selectedDay.date}</p>
-                    <h2 className="text-3xl font-black">${selectedDay.pnl.toLocaleString()}</h2>
-                </div>
-                <button onClick={() => setSelectedDay(null)} className="p-2 hover:bg-white/5 rounded-full"><X size={20}/></button>
-              </div>
-              <div className="space-y-3">
-                {selectedDay.trades.map((t: any, i: number) => (
-                  <div key={i} className="flex justify-between items-center p-4 bg-white/[0.02] border border-white/5 rounded-xl">
-                    <div className="flex flex-col">
-                        <span className="text-xs font-bold">{t.symbol} <span className="text-white/20 font-mono text-[10px] ml-2">{t.contracts}x</span></span>
-                        <span className={`text-[9px] font-black uppercase ${t.side === 'BUY' ? 'text-emerald-500' : 'text-rose-500'}`}>{t.side}</span>
-                    </div>
-                    <span className={`font-mono text-sm ${calculatePnL(t)! >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                        ${(calculatePnL(t) || 0).toLocaleString()}
-                    </span>
-                  </div>
-                ))}
+                <button onClick={() => setShowSettings(false)} className="w-full text-[9px] font-black uppercase text-white/20 tracking-widest hover:text-white">Cancel</button>
               </div>
             </motion.div>
           </div>
@@ -321,14 +307,13 @@ export default function VanguardEliteJournal() {
           </div>
 
           <div className="lg:col-span-4 bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-10 flex flex-col justify-center">
-            {settings ? (
-              <div className="space-y-8">
+            <div className="space-y-8">
                 <div className="flex justify-between items-center">
                   <div className="flex flex-col">
-                    <h4 className="text-2xl font-black uppercase tracking-tighter leading-none">{settings.firm_name}</h4>
+                    <h4 className="text-2xl font-black uppercase tracking-tighter leading-none">{firmName}</h4>
                     <span className="text-[10px] font-mono text-white/20 mt-1 uppercase tracking-widest">{isFunded ? 'Elite Funded' : 'Evaluation Stage'}</span>
                   </div>
-                  {isFunded ? <ShieldCheck className="text-emerald-500" size={32}/> : <Trophy className={totalPnL >= settings.profit_target ? 'text-emerald-500' : 'text-white/10'} />}
+                  {isFunded ? <ShieldCheck className="text-emerald-500" size={32}/> : <Trophy className={totalPnL >= parseFloat(profitTarget) ? 'text-emerald-500' : 'text-white/10'} />}
                 </div>
 
                 {!isFunded ? (
@@ -341,8 +326,8 @@ export default function VanguardEliteJournal() {
                       <motion.div animate={{ width: `${Math.abs(progressPercent)}%` }} className={`h-full ${totalPnL >= 0 ? 'bg-emerald-500' : 'bg-rose-500 ml-auto'}`} />
                     </div>
                     <div className="flex justify-between text-[9px] font-mono text-white/20 uppercase">
-                      <span>Loss: -${settings.max_loss}</span>
-                      <span>Target: ${settings.profit_target}</span>
+                      <span>Loss: -${maxLoss}</span>
+                      <span>Target: ${profitTarget}</span>
                     </div>
                   </div>
                 ) : (
@@ -351,8 +336,7 @@ export default function VanguardEliteJournal() {
                       <p className="text-xs font-mono text-white/60">Risk Management Active. Trade with Discipline.</p>
                   </div>
                 )}
-              </div>
-            ) : <button onClick={()=>setShowSettings(true)} className="text-xs uppercase font-black text-emerald-500">Configure Firm</button>}
+            </div>
           </div>
         </div>
 
@@ -381,7 +365,6 @@ export default function VanguardEliteJournal() {
                          {imgs.map((u: any, i: number) => (
                            <div key={i} className="relative group/img cursor-zoom-in" onClick={() => setActiveImage(u)}>
                              <img src={u} className="w-12 h-12 object-cover rounded-lg border border-white/5 group-hover/img:opacity-50 transition-all" />
-                             <ZoomIn className="absolute inset-0 m-auto opacity-0 group-hover/img:opacity-100 text-white" size={16} />
                            </div>
                          ))}
                        </div>
