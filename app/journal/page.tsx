@@ -14,11 +14,8 @@ export default function VanguardEliteJournal() {
   // Data States
   const [trades, setTrades] = useState<any[]>([])
   const [settings, setSettings] = useState<any>(null)
-  const [availableStrategies, setAvailableStrategies] = useState<any[]>([])
   const [selectedDay, setSelectedDay] = useState<any>(null)
   const [showSettings, setShowSettings] = useState(false)
-  
-  // Custom Lightbox State
   const [activeImage, setActiveImage] = useState<string | null>(null)
   
   // Form States
@@ -53,7 +50,7 @@ export default function VanguardEliteJournal() {
   }, [])
 
   const fetchSettings = async (userId: string) => {
-    const { data, error } = await supabase.from('user_settings').select('*').eq('user_id', userId).maybeSingle();
+    const { data } = await supabase.from('user_settings').select('*').eq('user_id', userId).maybeSingle();
     if (data) {
       setSettings(data);
       setFirmName(data.firm_name || 'TOPSTEP');
@@ -70,6 +67,7 @@ export default function VanguardEliteJournal() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // Use upsert with a clear onConflict for the user_id
     const { error } = await supabase.from('user_settings').upsert({
       user_id: user.id,
       firm_name: firmName,
@@ -82,20 +80,22 @@ export default function VanguardEliteJournal() {
       await fetchSettings(user.id);
       setShowSettings(false);
     } else {
-      console.error("Error saving settings:", error);
-      alert("Failed to save. Check if 'is_funded' column exists in Supabase.");
+      alert("DB Error: Make sure you ran the SQL command in Supabase to add the 'is_funded' column!");
+      console.error(error);
     }
     setIsSavingSettings(false);
   };
 
   const resetAccount = async () => {
-    if (confirm("NUCLEAR OPTION: This will delete ALL trades forever. Proceed?")) {
+    const confirmation = window.confirm("DELETE ALL TRADES? This cannot be undone. Use this to start a fresh evaluation.");
+    if (confirmation) {
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from('trades').delete().eq('user_id', user?.id);
       if (!error) {
         setTrades([]);
         setShowSettings(false);
-        fetchAll();
+        await fetchAll();
+        window.location.reload(); // Hard refresh to clear all cached states
       }
     }
   }
@@ -249,6 +249,7 @@ export default function VanguardEliteJournal() {
           </div>
         </div>
 
+        {/* Charts and Inputs */}
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
           <div className="xl:col-span-3 bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-8">
             <div className="h-[400px] w-full">
@@ -295,6 +296,7 @@ export default function VanguardEliteJournal() {
           </div>
         </div>
 
+        {/* Heatmap and Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-8 bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-10">
             <CalendarHeatmap 
@@ -340,6 +342,7 @@ export default function VanguardEliteJournal() {
           </div>
         </div>
 
+        {/* Trades Table */}
         <div className="bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] overflow-hidden overflow-x-auto">
           <table className="w-full text-left min-w-[1000px]">
             <thead className="text-[9px] uppercase tracking-widest text-white/20 bg-white/[0.01] border-b border-white/5">
