@@ -16,10 +16,18 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="scroll-smooth">
+      {/* This body tag is the 'Global Wrapper'. 
+          If there was a <Navbar /> or <Sidebar /> here from Antigravity, 
+          removing it fixes the layout.
+      */}
       <body className={`${inter.className} bg-[#050505] text-white antialiased`}>
-        {/* Vanguard Grid Overlay */}
+        {/* Background Grid - Global */}
         <div className="fixed inset-0 z-[-1] opacity-[0.02] pointer-events-none" 
-             style={{ backgroundImage: `radial-gradient(#fff 1px, transparent 1px)`, backgroundSize: '40px 40px' }} />
+             style={{ 
+               backgroundImage: `radial-gradient(#fff 1px, transparent 1px)`, 
+               backgroundSize: '40px 40px' 
+             }} 
+        />
         
         <div className="relative z-10">
           {children}
