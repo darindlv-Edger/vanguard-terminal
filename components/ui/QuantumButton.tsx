@@ -1,13 +1,14 @@
 'use client';
-import { motion } from 'framer-motion';
+import { motion, HTMLMotionProps } from 'framer-motion';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-interface QuantumButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface QuantumButtonProps extends HTMLMotionProps<"button"> {
     variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
     size?: 'sm' | 'md' | 'lg';
     isLoading?: boolean;
     icon?: React.ReactNode;
+    children: React.ReactNode;
 }
 
 export function QuantumButton({

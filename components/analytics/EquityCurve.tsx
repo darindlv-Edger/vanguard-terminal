@@ -62,7 +62,7 @@ export function EquityCurve({ data }: EquityCurveProps) {
                                 fontFamily: 'monospace'
                             }}
                             itemStyle={{ color: '#fff' }}
-                            formatter={(value: number) => [`$${value.toLocaleString()}`, 'Net PnL']}
+                            formatter={(value: number | undefined) => [`$${value?.toLocaleString()}`, 'Net PnL']}
                         />
                         <Area
                             type="monotone"
