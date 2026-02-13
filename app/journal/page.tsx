@@ -16,6 +16,7 @@ export default function VanguardEliteJournal() {
   const [settings, setSettings] = useState<any>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [activeImage, setActiveImage] = useState<string | null>(null)
+  const [selectedDay, setSelectedDay] = useState<any>(null) // FIX: Restored missing state
   
   // Form States
   const [baseSymbol, setBaseSymbol] = useState('NQ'); 
@@ -66,7 +67,6 @@ export default function VanguardEliteJournal() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Direct upsert logic
     const { error } = await supabase.from('user_settings').upsert({
       user_id: user.id,
       firm_name: firmName,
@@ -86,21 +86,15 @@ export default function VanguardEliteJournal() {
   };
 
   const resetAccount = async () => {
-    const confirmation = window.confirm("WARNING: This will delete ALL trades in your history. Only do this if you blew the account or passed and want a fresh journal. Continue?");
+    const confirmation = window.confirm("WARNING: This will delete ALL trades. Proceed?");
     if (confirmation) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      // Delete all trades for the user
       const { error: tradeError } = await supabase.from('trades').delete().eq('user_id', user.id);
-      
       if (!tradeError) {
-        // Reset local state and reload to ensure a clean slate
         setTrades([]);
         setShowSettings(false);
         window.location.reload(); 
-      } else {
-        alert("Failed to purge trades. Check your Supabase connection.");
       }
     }
   }
@@ -115,11 +109,9 @@ export default function VanguardEliteJournal() {
     const diff = trade.side === 'SELL' 
       ? parseFloat(trade.entry_price) - parseFloat(trade.exit_price) 
       : parseFloat(trade.exit_price) - parseFloat(trade.entry_price);
-    
     const isNQ = trade.symbol.includes('NQ');
     const isMicro = trade.symbol.startsWith('M');
     const pointValue = isNQ ? (isMicro ? 2 : 20) : (isMicro ? 5 : 50);
-    
     return diff * pointValue * (trade.contracts || 1);
   };
 
