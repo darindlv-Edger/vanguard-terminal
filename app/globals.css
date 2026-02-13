@@ -5,46 +5,22 @@
 :root {
   --background: #050505;
   --foreground: #ffffff;
-  --primary: #00f0ff;
-  --secondary: #ff003c;
-  --accent: #39ff14;
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: 'Inter', system-ui, sans-serif;
+  background: #050505;
+  color: #ffffff;
+  font-family: system-ui, -apple-system, sans-serif;
+  margin: 0;
+  padding: 0;
   overflow-x: hidden;
 }
 
-/* Custom Scrollbar for the Terminal look */
-::-webkit-scrollbar {
-  width: 5px;
-}
-::-webkit-scrollbar-track {
-  background: #0a0a0a;
-}
-::-webkit-scrollbar-thumb {
-  background: #1a1a1a;
-  border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #00f0ff;
-}
-
-/* Typography Overrides */
-h1, h2, h3, h4 {
-  letter-spacing: -0.05em;
-  text-transform: uppercase;
-}
-
-.text-gradient-primary {
-  background: linear-gradient(to right, #00f0ff, #ffffff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-/* Ensure no Antigravity colors leak through */
-.bg-antigravity-orange, .text-antigravity-purple {
+/* Force-kill any Antigravity styles */
+.antigravity-theme, .ag-grid, .purple-glow {
   display: none !important;
 }
+
+/* Vanguard Accent Colors */
+.text-cyan { color: #00f0ff; }
+.bg-vanguard-black { background-color: #050505; }
