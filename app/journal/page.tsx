@@ -14,7 +14,6 @@ export default function VanguardEliteJournal() {
   // Data States
   const [trades, setTrades] = useState<any[]>([])
   const [settings, setSettings] = useState<any>(null)
-  const [selectedDay, setSelectedDay] = useState<any>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [activeImage, setActiveImage] = useState<string | null>(null)
   
@@ -67,7 +66,7 @@ export default function VanguardEliteJournal() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Use upsert with a clear onConflict for the user_id
+    // Direct upsert logic
     const { error } = await supabase.from('user_settings').upsert({
       user_id: user.id,
       firm_name: firmName,
@@ -80,22 +79,28 @@ export default function VanguardEliteJournal() {
       await fetchSettings(user.id);
       setShowSettings(false);
     } else {
-      alert("DB Error: Make sure you ran the SQL command in Supabase to add the 'is_funded' column!");
       console.error(error);
+      alert("Database Error: Make sure you added the 'is_funded' column in your Supabase SQL editor!");
     }
     setIsSavingSettings(false);
   };
 
   const resetAccount = async () => {
-    const confirmation = window.confirm("DELETE ALL TRADES? This cannot be undone. Use this to start a fresh evaluation.");
+    const confirmation = window.confirm("WARNING: This will delete ALL trades in your history. Only do this if you blew the account or passed and want a fresh journal. Continue?");
     if (confirmation) {
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('trades').delete().eq('user_id', user?.id);
-      if (!error) {
+      if (!user) return;
+
+      // Delete all trades for the user
+      const { error: tradeError } = await supabase.from('trades').delete().eq('user_id', user.id);
+      
+      if (!tradeError) {
+        // Reset local state and reload to ensure a clean slate
         setTrades([]);
         setShowSettings(false);
-        await fetchAll();
-        window.location.reload(); // Hard refresh to clear all cached states
+        window.location.reload(); 
+      } else {
+        alert("Failed to purge trades. Check your Supabase connection.");
       }
     }
   }
@@ -249,7 +254,6 @@ export default function VanguardEliteJournal() {
           </div>
         </div>
 
-        {/* Charts and Inputs */}
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
           <div className="xl:col-span-3 bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-8">
             <div className="h-[400px] w-full">
@@ -296,7 +300,6 @@ export default function VanguardEliteJournal() {
           </div>
         </div>
 
-        {/* Heatmap and Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-8 bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-10">
             <CalendarHeatmap 
@@ -342,7 +345,6 @@ export default function VanguardEliteJournal() {
           </div>
         </div>
 
-        {/* Trades Table */}
         <div className="bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] overflow-hidden overflow-x-auto">
           <table className="w-full text-left min-w-[1000px]">
             <thead className="text-[9px] uppercase tracking-widest text-white/20 bg-white/[0.01] border-b border-white/5">
