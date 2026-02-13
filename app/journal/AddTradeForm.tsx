@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { QuantumButton } from '@/components/ui/QuantumButton';
-import { Loader2, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Loader2, ShieldCheck, ShieldAlert, UploadCloud } from 'lucide-react';
+import { ContractType } from '@/types';
 
 const PLAYBOOK_RULES = [
   { id: 'trend', label: 'HTF Trend Alignment', critical: true },
@@ -20,7 +21,8 @@ interface AddTradeFormProps {
 
 export function AddTradeForm({ onSuccess, userId, accountId }: AddTradeFormProps) {
   const [loading, setLoading] = useState(false);
-  const [symbol, setSymbol] = useState('NQ');
+  const [baseSymbol, setBaseSymbol] = useState<'NQ' | 'ES'>('NQ');
+  const [contractType, setContractType] = useState<ContractType>('MINI');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [contracts, setContracts] = useState('1');
   const [entryPrice, setEntryPrice] = useState('');
@@ -29,16 +31,20 @@ export function AddTradeForm({ onSuccess, userId, accountId }: AddTradeFormProps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!entryPrice) return;
     setLoading(true);
 
     const criticalRuleIds = PLAYBOOK_RULES.filter(r => r.critical).map(r => r.id);
     const isPlaybookValid = criticalRuleIds.every(id => checkedRules.includes(id));
 
+    // Determine Final Symbol (e.g., NQ or MNQ)
+    const finalSymbol = contractType === 'MICRO' ? `M${baseSymbol}` : baseSymbol;
+
     try {
       const { error } = await supabase.from('trades').insert([{
         user_id: userId,
         account_id: accountId,
-        symbol,
+        symbol: finalSymbol,
         side,
         contracts: parseInt(contracts),
         entry_price: parseFloat(entryPrice),
@@ -52,7 +58,6 @@ export function AddTradeForm({ onSuccess, userId, accountId }: AddTradeFormProps
       onSuccess();
     } catch (error) {
       console.error('Error logging trade:', error);
-      alert('Failed to sync trade.');
     } finally {
       setLoading(false);
     }
@@ -62,31 +67,51 @@ export function AddTradeForm({ onSuccess, userId, accountId }: AddTradeFormProps
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase text-white/20 ml-1">Symbol</label>
-          <select 
-            value={symbol} 
-            onChange={(e) => setSymbol(e.target.value)}
-            className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-[#00f0ff] transition-all"
-          >
-            <option value="NQ">NQ (Nasdaq)</option>
-            <option value="MNQ">MNQ (Micro)</option>
-            <option value="ES">ES (S&P 500)</option>
-            <option value="MES">MES (Micro)</option>
-          </select>
+          <label className="text-[10px] font-black uppercase text-white/20 ml-1">Asset Class</label>
+          <div className="flex bg-black border border-white/10 rounded-xl p-1">
+            <button 
+              type="button" 
+              onClick={() => setBaseSymbol('NQ')}
+              className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${baseSymbol === 'NQ' ? 'bg-white text-black' : 'text-white/40'}`}
+            >NASDAQ</button>
+            <button 
+              type="button" 
+              onClick={() => setBaseSymbol('ES')}
+              className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${baseSymbol === 'ES' ? 'bg-white text-black' : 'text-white/40'}`}
+            >S&P 500</button>
+          </div>
         </div>
         <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase text-white/20 ml-1">Action</label>
+          <label className="text-[10px] font-black uppercase text-white/20 ml-1">Instrument</label>
+          <div className="flex bg-black border border-white/10 rounded-xl p-1">
+            <button 
+              type="button" 
+              onClick={() => setContractType('MINI')}
+              className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${contractType === 'MINI' ? 'bg-white text-black' : 'text-white/40'}`}
+            >MINI</button>
+            <button 
+              type="button" 
+              onClick={() => setContractType('MICRO')}
+              className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${contractType === 'MICRO' ? 'bg-white text-black' : 'text-white/40'}`}
+            >MICRO</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2 col-span-2">
+          <label className="text-[10px] font-black uppercase text-white/20 ml-1">Direction</label>
           <div className="flex bg-black border border-white/10 rounded-xl p-1">
             <button 
               type="button" 
               onClick={() => setSide('BUY')}
-              className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${side === 'BUY' ? 'bg-[#00f0ff] text-black' : 'text-white/40'}`}
-            >LONG</button>
+              className={`flex-1 py-3 rounded-lg text-[10px] font-black transition-all ${side === 'BUY' ? 'bg-emerald-500 text-black' : 'text-white/40'}`}
+            >LONG / BUY</button>
             <button 
               type="button" 
               onClick={() => setSide('SELL')}
-              className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${side === 'SELL' ? 'bg-rose-500 text-black' : 'text-white/40'}`}
-            >SHORT</button>
+              className={`flex-1 py-3 rounded-lg text-[10px] font-black transition-all ${side === 'SELL' ? 'bg-rose-500 text-black' : 'text-white/40'}`}
+            >SHORT / SELL</button>
           </div>
         </div>
       </div>
@@ -97,11 +122,10 @@ export function AddTradeForm({ onSuccess, userId, accountId }: AddTradeFormProps
         <Input label="Exit" type="number" step="0.25" value={exitPrice} onChange={setExitPrice} />
       </div>
 
-      {/* Playbook Rules Section */}
       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
         <div className="flex justify-between items-center">
           <p className="text-[10px] font-black uppercase text-[#00f0ff] tracking-widest">Execution Rules</p>
-          <span className="text-[8px] text-white/20 uppercase font-mono">* Critical for validation</span>
+          <span className="text-[8px] text-white/20 uppercase font-mono">* Critical</span>
         </div>
         <div className="grid grid-cols-1 gap-2">
           {PLAYBOOK_RULES.map(rule => (
@@ -123,8 +147,8 @@ export function AddTradeForm({ onSuccess, userId, accountId }: AddTradeFormProps
         </div>
       </div>
 
-      <QuantumButton className="w-full" disabled={loading}>
-        {loading ? <Loader2 className="animate-spin" size={18} /> : 'Sync Execution'}
+      <QuantumButton className="w-full py-4" disabled={loading}>
+        {loading ? <Loader2 className="animate-spin mx-auto" size={18} /> : 'Sync Execution to Terminal'}
       </QuantumButton>
     </form>
   );
@@ -135,7 +159,7 @@ function Input({ label, ...props }: any) {
     <div className="space-y-2">
       <label className="text-[10px] font-black uppercase text-white/20 ml-1">{label}</label>
       <input 
-        className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm font-mono outline-none focus:border-[#00f0ff] transition-all" 
+        className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm font-mono outline-none focus:border-[#00f0ff] transition-all text-white" 
         {...props} 
         onChange={(e) => props.onChange(e.target.value)} 
       />

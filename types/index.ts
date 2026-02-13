@@ -1,4 +1,6 @@
-// types/index.ts (or types.ts)
+// types/index.ts
+
+export type ContractType = 'MINI' | 'MICRO';
 
 export interface Trade {
   id: string;
@@ -10,8 +12,7 @@ export interface Trade {
   entry_price: number;
   exit_price: number | null;
   created_at: string;
-  // THESE ARE THE MISSING KEYS CAUSING YOUR ERROR:
-  is_playbook_valid: boolean; 
+  is_playbook_valid: boolean;
   rules_checked: string[] | null;
   image_urls?: string[];
   strategy?: string;
