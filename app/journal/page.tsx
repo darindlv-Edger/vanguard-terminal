@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import CalendarHeatmap from 'react-calendar-heatmap';
-import { Target, AlertTriangle, Settings, TrendingUp, Trophy, X, ChevronRight, ZoomIn, RefreshCcw, ShieldCheck, Loader2, PlusCircle } from 'lucide-react';
+import { Target, Settings, Trophy, RefreshCcw, ShieldCheck, Loader2, PlusCircle, History, LayoutDashboard, ChevronDown } from 'lucide-react';
 import 'react-calendar-heatmap/dist/styles.css';
 
 export default function VanguardEliteJournal() {
@@ -16,6 +16,7 @@ export default function VanguardEliteJournal() {
   const [settings, setSettings] = useState<any>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [activeImage, setActiveImage] = useState<string | null>(null)
+  const [allSessions, setAllSessions] = useState<any[]>([])
   const [selectedDay, setSelectedDay] = useState<any>(null)
   
   // Form States
@@ -43,6 +44,7 @@ export default function VanguardEliteJournal() {
       if (!user) router.push('/login')
       else {
         fetchSettings(user.id);
+        fetchSessionHistory(user.id);
       }
     }
     checkUser()
@@ -56,70 +58,63 @@ export default function VanguardEliteJournal() {
       setProfitTarget(data.profit_target?.toString() || '3000');
       setMaxLoss(data.max_loss?.toString() || '2000');
       setIsFunded(data.is_funded || false);
-      // Only fetch trades for the ACTIVE account session
       fetchActiveTrades(data.current_account_id);
     } else {
       setShowSettings(true); 
     }
   }
 
+  const fetchSessionHistory = async (userId: string) => {
+    const { data } = await supabase.from('trades').select('account_id, created_at').eq('user_id', userId);
+    if (data) {
+      const uniqueIds = Array.from(new Set(data.map(item => item.account_id))).filter(Boolean);
+      setAllSessions(uniqueIds);
+    }
+  }
+
   const fetchActiveTrades = async (accountId: string) => {
-    const { data: t } = await supabase
-      .from('trades')
-      .select('*')
-      .eq('account_id', accountId) // Filter by account
-      .order('created_at', { ascending: false });
+    if (!accountId) return;
+    const { data: t } = await supabase.from('trades').select('*').eq('account_id', accountId).order('created_at', { ascending: false });
     if (t) setTrades(t);
+  }
+
+  const switchAccount = async (id: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from('user_settings').update({ current_account_id: id }).eq('user_id', user?.id);
+    window.location.reload();
   }
 
   const saveSettings = async () => {
     setIsSavingSettings(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
     const { error } = await supabase.from('user_settings').upsert({
-      user_id: user.id,
+      user_id: user?.id,
       firm_name: firmName,
       profit_target: parseFloat(profitTarget),
       max_loss: parseFloat(maxLoss),
       is_funded: isFunded
     }, { onConflict: 'user_id' });
-
-    if (!error) {
-      await fetchSettings(user.id);
-      setShowSettings(false);
-    }
+    if (!error) { await fetchSettings(user!.id); setShowSettings(false); }
     setIsSavingSettings(false);
   };
 
   const createNewAccountSession = async () => {
-    const confirmNew = window.confirm("Start New Session? This resets the progress bar but KEEPS your old trade data in the database.");
-    if (!confirmNew) return;
-
+    if(!confirm("Create a fresh account session? Old trades stay safe in history.")) return;
     setIsSavingSettings(true);
     const { data: { user } } = await supabase.auth.getUser();
     const newId = crypto.randomUUID();
-
-    const { error } = await supabase.from('user_settings').upsert({
+    await supabase.from('user_settings').upsert({
       user_id: user?.id,
       current_account_id: newId,
-      firm_name: firmName,
-      profit_target: parseFloat(profitTarget),
-      max_loss: parseFloat(maxLoss),
+      firm_name: "NEW ACCOUNT",
       is_funded: false
     }, { onConflict: 'user_id' });
-
-    if (!error) {
-      window.location.reload();
-    }
-    setIsSavingSettings(false);
+    window.location.reload();
   }
 
   const calculatePnL = (trade: any) => {
     if (!trade.exit_price || !trade.entry_price) return null;
-    const diff = trade.side === 'SELL' 
-      ? parseFloat(trade.entry_price) - parseFloat(trade.exit_price) 
-      : parseFloat(trade.exit_price) - parseFloat(trade.entry_price);
+    const diff = trade.side === 'SELL' ? parseFloat(trade.entry_price) - parseFloat(trade.exit_price) : parseFloat(trade.exit_price) - parseFloat(trade.entry_price);
     const isNQ = trade.symbol.includes('NQ');
     const isMicro = trade.symbol.startsWith('M');
     const pointValue = isNQ ? (isMicro ? 2 : 20) : (isMicro ? 5 : 50);
@@ -127,31 +122,23 @@ export default function VanguardEliteJournal() {
   };
 
   const totalPnL = useMemo(() => trades.reduce((sum: number, t: any) => sum + (calculatePnL(t) || 0), 0), [trades]);
-
   const progressPercent = useMemo(() => {
-    const target = parseFloat(profitTarget) || 3000;
-    if (isFunded) return 0;
-    const percent = (totalPnL / target) * 100;
-    return Math.min(Math.max(percent, -100), 100); 
+    const target = parseFloat(profitTarget) || 1;
+    return isFunded ? 0 : Math.min(Math.max((totalPnL / target) * 100, -100), 100);
   }, [totalPnL, profitTarget, isFunded]);
 
   const chartData = useMemo(() => {
     const sorted = [...trades].filter((t: any) => t.exit_price).sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     let runningPnL = 0;
-    return sorted.map((t: any) => {
-      runningPnL += (calculatePnL(t) || 0);
-      return { name: t.created_at.split('T')[0], pnl: runningPnL };
-    });
+    return sorted.map((t: any) => ({ name: t.created_at.split('T')[0], pnl: runningPnL += (calculatePnL(t) || 0) }));
   }, [trades]);
 
   const heatmapValues = useMemo(() => {
     const counts: any = {};
     trades.forEach((t: any) => {
       const date = t.created_at.split('T')[0];
-      const pnl = calculatePnL(t) || 0;
-      if (!counts[date]) counts[date] = { date, pnl: 0, trades: [] };
-      counts[date].pnl += pnl;
-      counts[date].trades.push(t);
+      if (!counts[date]) counts[date] = { date, pnl: 0 };
+      counts[date].pnl += (calculatePnL(t) || 0);
     });
     return Object.values(counts);
   }, [trades]);
@@ -177,37 +164,65 @@ export default function VanguardEliteJournal() {
     setStatus('SYNCING...');
     const { data: { user } } = await supabase.auth.getUser();
     const sym = contractType === 'MICRO' ? (baseSymbol === 'NQ' ? 'MNQ' : 'MES') : baseSymbol;
-    
     const { error } = await supabase.from('trades').insert([{ 
-      user_id: user?.id, 
-      account_id: settings?.current_account_id, // Link to current session
-      symbol: sym, side, 
+      user_id: user?.id, account_id: settings?.current_account_id, symbol: sym, side, 
       entry_price: parseFloat(entryPrice), exit_price: exitPrice ? parseFloat(exitPrice) : null,
-      contracts: parseInt(contracts), strategy: 'MANUAL', 
-      image_urls: tempImages, created_at: new Date(tradeDate + 'T12:00:00').toISOString() 
+      contracts: parseInt(contracts), strategy: 'MANUAL', image_urls: tempImages, created_at: new Date(tradeDate + 'T12:00:00').toISOString() 
     }]);
-    if (!error) { 
-      setStatus('SUCCESS'); setEntryPrice(''); setExitPrice(''); setTempImages([]); 
-      fetchActiveTrades(settings.current_account_id); 
-      setTimeout(()=>setStatus(''), 2000); 
-    }
+    if (!error) { setStatus('SUCCESS'); setEntryPrice(''); setExitPrice(''); setTempImages([]); fetchActiveTrades(settings.current_account_id); setTimeout(()=>setStatus(''), 2000); }
   }
 
   return (
     <main className="p-4 md:p-8 bg-[#050505] text-[#e0e0e0] min-h-screen pt-32 selection:bg-emerald-500/30">
       
+      {/* PERSISTENT HEADER CONTROL PANEL */}
+      <div className="fixed top-0 left-0 right-0 z-[200] bg-black/80 backdrop-blur-md border-b border-white/5 p-4">
+        <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-6">
+             <div className="flex flex-col">
+                <span className="text-[8px] font-black uppercase text-emerald-500 tracking-[0.3em]">Active Session</span>
+                <div className="flex items-center gap-2">
+                   <h2 className="text-sm font-bold uppercase tracking-tighter">{firmName}</h2>
+                   <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isFunded ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-amber-500'}`} />
+                </div>
+             </div>
+
+             <div className="h-8 w-px bg-white/10" />
+
+             {/* ACCOUNT DROPDOWN */}
+             <div className="relative group">
+                <button className="flex items-center gap-2 bg-white/5 hover:bg-white/10 px-4 py-2 rounded-xl transition-all border border-white/5">
+                   <History size={14} className="text-white/40"/>
+                   <span className="text-[10px] font-black uppercase tracking-widest">Switch Account</span>
+                   <ChevronDown size={12} className="text-white/20"/>
+                </button>
+                <div className="absolute top-full left-0 mt-2 w-64 bg-[#0d0d0d] border border-white/10 rounded-2xl p-2 hidden group-hover:block shadow-2xl">
+                   <p className="p-3 text-[8px] font-black uppercase text-white/20 tracking-widest">Session History</p>
+                   {allSessions.length > 0 ? allSessions.map((id, idx) => (
+                      <button key={id} onClick={() => switchAccount(id)} className={`w-full text-left p-3 rounded-xl text-[10px] font-bold hover:bg-emerald-500 hover:text-black transition-all mb-1 ${settings?.current_account_id === id ? 'bg-emerald-500/20 text-emerald-500' : 'text-white/60'}`}>
+                        SESSION #{allSessions.length - idx} {settings?.current_account_id === id && '(ACTIVE)'}
+                      </button>
+                   )) : <p className="p-3 text-[10px] text-white/20 italic">No previous sessions</p>}
+                   <button onClick={createNewAccountSession} className="w-full mt-2 p-3 rounded-xl text-[10px] font-black bg-white text-black uppercase flex items-center justify-center gap-2">
+                     <PlusCircle size={12}/> New Session
+                   </button>
+                </div>
+             </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+              <button onClick={() => setShowSettings(true)} className="flex items-center gap-2 bg-emerald-500 text-black px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all">
+                <Settings size={14}/> Config Targets
+              </button>
+          </div>
+        </div>
+      </div>
+
       <AnimatePresence>
         {activeImage && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={() => setActiveImage(null)}
-            className="fixed inset-0 z-[500] bg-black/95 flex items-center justify-center p-4 cursor-zoom-out"
-          >
-            <motion.img 
-              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-              src={activeImage} className="max-w-full max-h-full rounded-lg shadow-2xl"
-            />
-          </motion.div>
+          <div onClick={() => setActiveImage(null)} className="fixed inset-0 z-[500] bg-black/95 flex items-center justify-center p-4 cursor-zoom-out">
+            <img src={activeImage} className="max-w-full max-h-full rounded-lg shadow-2xl" />
+          </div>
         )}
       </AnimatePresence>
 
@@ -215,43 +230,23 @@ export default function VanguardEliteJournal() {
         {showSettings && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-xl p-6">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[#0d0d0d] border border-white/10 p-10 rounded-[2.5rem] max-w-md w-full">
-              <h2 className="text-3xl font-black tracking-tighter mb-8 uppercase">Establish <span className="text-emerald-500">Objective</span></h2>
+              <h2 className="text-3xl font-black tracking-tighter mb-8 uppercase text-white">Target <span className="text-emerald-500">Config</span></h2>
               <div className="space-y-6">
                 <Input label="Firm Name" value={firmName} onChange={setFirmName} />
                 <div className="grid grid-cols-2 gap-4">
                   <Input label="Target ($)" type="number" value={profitTarget} onChange={setProfitTarget} />
                   <Input label="Max Loss ($)" type="number" value={maxLoss} onChange={setMaxLoss} />
                 </div>
-
                 <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Funded Mode</span>
-                  <button 
-                    onClick={() => setIsFunded(!isFunded)}
-                    className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${isFunded ? 'bg-emerald-500 text-black' : 'bg-white/10 text-white/40'}`}
-                  >
-                    {isFunded ? 'ON' : 'OFF'}
+                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Funded Status</span>
+                  <button onClick={() => setIsFunded(!isFunded)} className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${isFunded ? 'bg-emerald-500 text-black' : 'bg-white/10 text-white/40'}`}>
+                    {isFunded ? 'FUNDED' : 'EVALUATION'}
                   </button>
                 </div>
-
-                <div className="grid grid-cols-1 gap-4 pt-4">
-                  <button 
-                    disabled={isSavingSettings}
-                    onClick={saveSettings} 
-                    className="py-5 bg-white text-black font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-emerald-500 transition-all flex items-center justify-center"
-                  >
-                    {isSavingSettings ? <Loader2 className="animate-spin" size={18}/> : 'Save Objectives'}
-                  </button>
-                  
-                  <div className="h-px bg-white/5 my-2" />
-                  
-                  <button 
-                    onClick={createNewAccountSession} 
-                    className="py-5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-emerald-500 hover:text-black transition-all flex items-center justify-center gap-2"
-                  >
-                    <PlusCircle size={14}/> Start New Session
-                  </button>
-                </div>
-                <button onClick={() => setShowSettings(false)} className="w-full text-[9px] font-black uppercase text-white/20 tracking-widest hover:text-white">Cancel</button>
+                <button disabled={isSavingSettings} onClick={saveSettings} className="w-full py-5 bg-white text-black font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-emerald-500 transition-all">
+                  {isSavingSettings ? <Loader2 className="animate-spin mx-auto" size={18}/> : 'Update Session'}
+                </button>
+                <button onClick={() => setShowSettings(false)} className="w-full text-[9px] font-black uppercase text-white/20 tracking-widest">Close</button>
               </div>
             </motion.div>
           </div>
@@ -260,19 +255,13 @@ export default function VanguardEliteJournal() {
 
       <div className="max-w-[1600px] mx-auto space-y-6">
         <div className="flex justify-between items-end border-b border-white/5 pb-6">
-          <div>
-            <h1 className="text-[9px] font-black tracking-[0.5em] text-emerald-500 uppercase mb-2">Vanguard // Executive</h1>
-            <button onClick={() => setShowSettings(true)} className="text-[10px] font-mono text-white/20 hover:text-white uppercase tracking-widest flex items-center gap-2"> <Settings size={12}/> Session Config</button>
-          </div>
+          <h1 className="text-6xl font-light tracking-tighter text-white">Session <span className="text-emerald-500 font-black">PNL</span></h1>
           <div className="text-right">
-             <p className="text-[9px] font-black text-white/20 uppercase mb-1">Session Equity</p>
+             <p className="text-[9px] font-black text-white/20 uppercase mb-1">Equity Curve</p>
              <p className={`text-6xl font-light tracking-tighter ${totalPnL >= 0 ? 'text-white' : 'text-rose-500'}`}>${totalPnL.toLocaleString()}</p>
           </div>
         </div>
 
-        {/* ... Rest of UI remains same (Charts, Heatmap, Table) ... */}
-        {/* Note: I'm omitting the visual-only parts to keep this response clean, but they use the filtered 'trades' state */}
-        
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
           <div className="xl:col-span-3 bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-8">
             <div className="h-[400px] w-full">
@@ -313,9 +302,7 @@ export default function VanguardEliteJournal() {
                     <input type="file" multiple className="hidden" onChange={handleFileUpload} />
                  </label>
             </div>
-            <button onClick={saveTrade} className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] bg-emerald-500 text-black">
-              {status || 'Commit Trade'}
-            </button>
+            <button onClick={saveTrade} className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] bg-emerald-500 text-black">{status || 'Commit Trade'}</button>
           </div>
         </div>
 
@@ -325,42 +312,37 @@ export default function VanguardEliteJournal() {
               startDate={new Date(new Date().setFullYear(new Date().getFullYear() - 1))} 
               endDate={new Date()} 
               values={heatmapValues} 
-              classForValue={(v: any) => !v ? 'color-empty' : v.pnl > 0 ? 'color-green' : v.pnl < 0 ? 'color-red' : 'color-neutral'} 
+              classForValue={(v: any) => !v ? 'color-empty' : v.pnl > 0 ? 'color-green' : 'color-red'} 
               onClick={(v: any) => { if(v) setSelectedDay(v); }}
             />
           </div>
-
           <div className="lg:col-span-4 bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-10 flex flex-col justify-center">
-            <div className="space-y-8">
+             <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                  <div className="flex flex-col">
-                    <h4 className="text-2xl font-black uppercase tracking-tighter leading-none">{firmName}</h4>
-                    <span className="text-[10px] font-mono text-white/20 mt-1 uppercase tracking-widest">{isFunded ? 'Elite Funded' : 'Evaluation Stage'}</span>
-                  </div>
-                  {isFunded ? <ShieldCheck className="text-emerald-500" size={32}/> : <Trophy className={totalPnL >= parseFloat(profitTarget) ? 'text-emerald-500' : 'text-white/10'} />}
+                   <h4 className="text-2xl font-black uppercase tracking-tighter">{firmName}</h4>
+                   {isFunded ? <ShieldCheck className="text-emerald-500" size={32}/> : <Trophy className={totalPnL >= parseFloat(profitTarget) ? 'text-emerald-500' : 'text-white/10'} />}
                 </div>
-
                 {!isFunded ? (
                   <div className="space-y-4">
                     <div className="flex justify-between text-[10px] font-mono uppercase tracking-widest">
-                      <span>Performance</span>
+                      <span>Progress</span>
                       <span className={totalPnL >= 0 ? 'text-emerald-500' : 'text-rose-500'}>${totalPnL.toLocaleString()}</span>
                     </div>
-                    <div className="h-3 bg-white/5 rounded-full overflow-hidden">
+                    <div className="h-4 bg-white/5 rounded-full overflow-hidden border border-white/5">
                       <motion.div animate={{ width: `${Math.abs(progressPercent)}%` }} className={`h-full ${totalPnL >= 0 ? 'bg-emerald-500' : 'bg-rose-500 ml-auto'}`} />
                     </div>
-                    <div className="flex justify-between text-[9px] font-mono text-white/20 uppercase">
-                      <span>Loss: -${maxLoss}</span>
+                    <div className="flex justify-between text-[9px] font-mono text-white/20 uppercase tracking-widest">
+                      <span>Max Loss: -${maxLoss}</span>
                       <span>Target: ${profitTarget}</span>
                     </div>
                   </div>
                 ) : (
-                  <div className="p-6 border border-emerald-500/20 bg-emerald-500/5 rounded-[2rem] text-center">
-                      <p className="text-[9px] font-black uppercase text-emerald-500 tracking-[0.2em] mb-2">Account Protected</p>
-                      <p className="text-xs font-mono text-white/60">Risk Management Active. Trade with Discipline.</p>
+                  <div className="p-8 border border-emerald-500/20 bg-emerald-500/5 rounded-3xl text-center">
+                      <p className="text-[10px] font-black uppercase text-emerald-500 tracking-[0.3em] mb-2">Funded Mode Active</p>
+                      <p className="text-xs text-white/40 font-mono">Focus on risk, not profit.</p>
                   </div>
                 )}
-            </div>
+             </div>
           </div>
         </div>
 
@@ -376,26 +358,11 @@ export default function VanguardEliteJournal() {
                 return (
                   <tr key={trade.id} className="group hover:bg-white/[0.01]">
                     <td className="p-8 font-mono text-[10px] text-white/40">{trade.created_at?.split('T')[0]}</td>
-                    <td className="p-8">
-                      <span className="text-sm font-bold text-white uppercase">{trade.symbol}</span>
-                      <p className={`text-[9px] font-black ${trade.side === 'BUY' ? 'text-emerald-500' : 'text-rose-500'}`}>{trade.side}</p>
-                    </td>
+                    <td className="p-8"><span className="text-sm font-bold text-white uppercase">{trade.symbol}</span><p className={`text-[9px] font-black ${trade.side === 'BUY' ? 'text-emerald-500' : 'text-rose-500'}`}>{trade.side}</p></td>
                     <td className="p-8 font-mono text-xs">{trade.contracts || 1}x</td>
-                    <td className={`p-8 text-2xl font-mono tracking-tighter ${pnl && pnl >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                      {pnl ? `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString()}` : '---'}
-                    </td>
-                    <td className="p-8">
-                       <div className="flex gap-2">
-                         {imgs.map((u: any, i: number) => (
-                           <div key={i} className="relative group/img cursor-zoom-in" onClick={() => setActiveImage(u)}>
-                             <img src={u} className="w-12 h-12 object-cover rounded-lg border border-white/5 group-hover/img:opacity-50 transition-all" />
-                           </div>
-                         ))}
-                       </div>
-                    </td>
-                    <td className="p-8 text-right">
-                      <button onClick={async () => { if(confirm('Delete?')) await supabase.from('trades').delete().eq('id', trade.id).then(()=>fetchActiveTrades(settings.current_account_id)) }} className="opacity-0 group-hover:opacity-100 text-[10px] font-black text-rose-500 uppercase">Purge</button>
-                    </td>
+                    <td className={`p-8 text-2xl font-mono tracking-tighter ${pnl && pnl >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{pnl ? `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString()}` : '---'}</td>
+                    <td className="p-8 flex gap-2">{imgs.map((u: any, i: number) => <img key={i} onClick={()=>setActiveImage(u)} src={u} className="w-12 h-12 object-cover rounded-lg border border-white/5 cursor-pointer hover:opacity-50" />)}</td>
+                    <td className="p-8 text-right"><button onClick={async () => { if(confirm('Delete?')) await supabase.from('trades').delete().eq('id', trade.id).then(()=>fetchActiveTrades(settings.current_account_id)) }} className="opacity-0 group-hover:opacity-100 text-[10px] font-black text-rose-500 uppercase">Purge</button></td>
                   </tr>
                 )
               })}
@@ -405,8 +372,8 @@ export default function VanguardEliteJournal() {
       </div>
 
       <style jsx global>{`
-        .color-empty { fill: #111; } .color-green { fill: #10b981; } .color-red { fill: #f43f5e; } .color-neutral { fill: #222; }
-        rect { rx: 4; ry: 4; transition: 0.2s; cursor: pointer; } rect:hover { fill: #fff !important; }
+        .color-empty { fill: #111; } .color-green { fill: #10b981; } .color-red { fill: #f43f5e; }
+        rect { rx: 4; transition: 0.2s; } rect:hover { fill: #fff !important; }
       `}</style>
     </main>
   )
