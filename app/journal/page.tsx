@@ -24,10 +24,9 @@ export default function JournalPage() {
   const fetchData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return; // Middleware should handle redirect really
+      if (!user) return;
       setUserId(user.id);
 
-      // Fetch Settings to get current account
       const { data: settingsData, error: settingsError } = await supabase
         .from('user_settings')
         .select('*')
@@ -93,7 +92,6 @@ export default function JournalPage() {
 
   return (
     <div className="space-y-8 pb-20 pt-10">
-      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -129,16 +127,13 @@ export default function JournalPage() {
           </motion.button>
 
           <div onClick={() => setIsModalOpen(true)}>
-            <QuantumButton
-              icon={<Plus size={18} />}
-            >
+            <QuantumButton icon={<Plus size={18} />}>
               Log Execution
             </QuantumButton>
           </div>
         </div>
       </div>
 
-      {/* Stats */}
       {settings ? (
         <StatsOverview
           trades={trades}
@@ -157,7 +152,6 @@ export default function JournalPage() {
         </div>
       )}
 
-      {/* Main Content */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -170,7 +164,6 @@ export default function JournalPage() {
         <TradeTable trades={trades} onDelete={handleDeleteTrade} />
       </motion.div>
 
-      {/* Log Trade Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -193,7 +186,6 @@ export default function JournalPage() {
         )}
       </Modal>
 
-      {/* Settings Modal */}
       <Modal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
