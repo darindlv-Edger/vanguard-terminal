@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import CalendarHeatmap from 'react-calendar-heatmap';
-import { Target, AlertTriangle, Settings, TrendingUp, Trophy, X, ChevronRight, ZoomIn } from 'lucide-react';
+import { Target, AlertTriangle, Settings, TrendingUp, Trophy, X, ChevronRight, ZoomIn, RefreshCcw, ShieldCheck } from 'lucide-react';
 import 'react-calendar-heatmap/dist/styles.css';
 
 export default function VanguardEliteJournal() {
@@ -37,6 +37,7 @@ export default function VanguardEliteJournal() {
   const [firmName, setFirmName] = useState('TOPSTEP');
   const [profitTarget, setProfitTarget] = useState('3000');
   const [maxLoss, setMaxLoss] = useState('2000');
+  const [isFunded, setIsFunded] = useState(false);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -57,6 +58,7 @@ export default function VanguardEliteJournal() {
       setFirmName(data.firm_name);
       setProfitTarget(data.profit_target.toString());
       setMaxLoss(data.max_loss.toString());
+      setIsFunded(data.is_funded || false);
     } else {
       setShowSettings(true); 
     }
@@ -68,13 +70,25 @@ export default function VanguardEliteJournal() {
       user_id: user?.id,
       firm_name: firmName,
       profit_target: parseFloat(profitTarget),
-      max_loss: parseFloat(maxLoss)
+      max_loss: parseFloat(maxLoss),
+      is_funded: isFunded
     });
     if (!error) {
       setShowSettings(false);
       fetchSettings(user!.id);
     }
   };
+
+  const resetAccount = async () => {
+    if (confirm("WARNING: This will delete ALL trades. Use this if you blew the account and are starting over. Proceed?")) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from('trades').delete().eq('user_id', user?.id);
+      if (!error) {
+        fetchAll();
+        setShowSettings(false);
+      }
+    }
+  }
 
   const fetchAll = async () => {
     const { data: t } = await supabase.from('trades').select('*').order('created_at', { ascending: false })
@@ -99,10 +113,10 @@ export default function VanguardEliteJournal() {
   const totalPnL = useMemo(() => trades.reduce((sum: number, t: any) => sum + (calculatePnL(t) || 0), 0), [trades]);
 
   const progressPercent = useMemo(() => {
-    if (!settings) return 0;
+    if (!settings || isFunded) return 0;
     const percent = (totalPnL / settings.profit_target) * 100;
     return Math.min(Math.max(percent, -100), 100); 
-  }, [totalPnL, settings]);
+  }, [totalPnL, settings, isFunded]);
 
   const chartData = useMemo(() => {
     const sorted = [...trades].filter((t: any) => t.exit_price).sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -185,7 +199,23 @@ export default function VanguardEliteJournal() {
                   <Input label="Target ($)" type="number" value={profitTarget} onChange={setProfitTarget} />
                   <Input label="Max Loss ($)" type="number" value={maxLoss} onChange={setMaxLoss} />
                 </div>
-                <button onClick={saveSettings} className="w-full py-5 bg-white text-black font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-emerald-500 transition-all">Initialize</button>
+
+                <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Funded Mode</span>
+                  <button 
+                    onClick={() => setIsFunded(!isFunded)}
+                    className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${isFunded ? 'bg-emerald-500 text-black' : 'bg-white/10 text-white/40'}`}
+                  >
+                    {isFunded ? 'ACTIVE' : 'OFF'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-4">
+                  <button onClick={saveSettings} className="py-5 bg-white text-black font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-emerald-500 transition-all">Initialize</button>
+                  <button onClick={resetAccount} className="py-5 bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-rose-500 hover:text-black transition-all flex items-center justify-center gap-2">
+                    <RefreshCcw size={14}/> Reset
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -290,26 +320,37 @@ export default function VanguardEliteJournal() {
             />
           </div>
 
-          <div className="lg:col-span-4 bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-10 flex flex-col justify-between">
+          <div className="lg:col-span-4 bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-10 flex flex-col justify-center">
             {settings ? (
               <div className="space-y-8">
-                <div className="flex justify-between">
-                  <h4 className="text-2xl font-black uppercase tracking-tighter">{settings.firm_name}</h4>
-                  <Trophy className={totalPnL >= settings.profit_target ? 'text-emerald-500' : 'text-white/10'} />
+                <div className="flex justify-between items-center">
+                  <div className="flex flex-col">
+                    <h4 className="text-2xl font-black uppercase tracking-tighter leading-none">{settings.firm_name}</h4>
+                    <span className="text-[10px] font-mono text-white/20 mt-1 uppercase tracking-widest">{isFunded ? 'Elite Funded' : 'Evaluation Stage'}</span>
+                  </div>
+                  {isFunded ? <ShieldCheck className="text-emerald-500" size={32}/> : <Trophy className={totalPnL >= settings.profit_target ? 'text-emerald-500' : 'text-white/10'} />}
                 </div>
-                <div className="space-y-4">
-                  <div className="flex justify-between text-[10px] font-mono uppercase tracking-widest">
-                    <span>Performance</span>
-                    <span className={totalPnL >= 0 ? 'text-emerald-500' : 'text-rose-500'}>${totalPnL.toLocaleString()}</span>
+
+                {!isFunded ? (
+                  <div className="space-y-4">
+                    <div className="flex justify-between text-[10px] font-mono uppercase tracking-widest">
+                      <span>Performance</span>
+                      <span className={totalPnL >= 0 ? 'text-emerald-500' : 'text-rose-500'}>${totalPnL.toLocaleString()}</span>
+                    </div>
+                    <div className="h-3 bg-white/5 rounded-full overflow-hidden">
+                      <motion.div animate={{ width: `${Math.abs(progressPercent)}%` }} className={`h-full ${totalPnL >= 0 ? 'bg-emerald-500' : 'bg-rose-500 ml-auto'}`} />
+                    </div>
+                    <div className="flex justify-between text-[9px] font-mono text-white/20 uppercase">
+                      <span>Loss: -${settings.max_loss}</span>
+                      <span>Target: ${settings.profit_target}</span>
+                    </div>
                   </div>
-                  <div className="h-3 bg-white/5 rounded-full overflow-hidden">
-                    <motion.div animate={{ width: `${Math.abs(progressPercent)}%` }} className={`h-full ${totalPnL >= 0 ? 'bg-emerald-500' : 'bg-rose-500 ml-auto'}`} />
+                ) : (
+                  <div className="p-6 border border-emerald-500/20 bg-emerald-500/5 rounded-[2rem] text-center">
+                      <p className="text-[9px] font-black uppercase text-emerald-500 tracking-[0.2em] mb-2">Account Protected</p>
+                      <p className="text-xs font-mono text-white/60">Risk Management Active. Trade with Discipline.</p>
                   </div>
-                  <div className="flex justify-between text-[9px] font-mono text-white/20 uppercase">
-                    <span>Loss: -${settings.max_loss}</span>
-                    <span>Target: ${settings.profit_target}</span>
-                  </div>
-                </div>
+                )}
               </div>
             ) : <button onClick={()=>setShowSettings(true)} className="text-xs uppercase font-black text-emerald-500">Configure Firm</button>}
           </div>
