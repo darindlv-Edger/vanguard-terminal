@@ -1,7 +1,7 @@
 'use client';
 
 import { Trade } from '@/types';
-import { Trash2, TrendingUp, TrendingDown, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Trash2, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 interface TradeTableProps {
   trades: Trade[];
@@ -14,8 +14,13 @@ export function TradeTable({ trades, onDelete }: TradeTableProps) {
     const diff = trade.side === 'SELL' 
       ? trade.entry_price - trade.exit_price 
       : trade.exit_price - trade.entry_price;
+    
     const isNQ = trade.symbol.includes('NQ');
-    const multiplier = isNQ ? (trade.symbol.startsWith('M') ? 2 : 20) : (trade.symbol.startsWith('M') ? 5 : 50);
+    const isMicro = trade.symbol.startsWith('M');
+    
+    // NQ: $20/pt, MNQ: $2/pt | ES: $50/pt, MES: $5/pt
+    const multiplier = isNQ ? (isMicro ? 2 : 20) : (isMicro ? 5 : 50);
+    
     return diff * multiplier * trade.contracts;
   };
 
@@ -40,6 +45,9 @@ export function TradeTable({ trades, onDelete }: TradeTableProps) {
           ) : (
             trades.map((trade) => {
               const pnl = calculatePnL(trade);
+              // Safe check for the property that caused your error
+              const isValid = trade.is_playbook_valid ?? true; 
+
               return (
                 <tr key={trade.id} className="group hover:bg-white/[0.01] transition-colors">
                   <td className="p-6 font-mono text-[10px] text-white/40">
@@ -57,15 +65,15 @@ export function TradeTable({ trades, onDelete }: TradeTableProps) {
                     </span>
                   </td>
                   <td className="p-6">
-                    {trade.is_playbook_valid ? (
+                    {isValid ? (
                       <div className="flex items-center gap-2 text-emerald-500/60">
                         <ShieldCheck size={14} />
-                        <span className="text-[9px] font-black uppercase">Valid Setup</span>
+                        <span className="text-[9px] font-black uppercase tracking-widest">Valid Setup</span>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 text-rose-500">
+                      <div className="flex items-center gap-2 text-rose-500 bg-rose-500/5 px-2 py-1 rounded border border-rose-500/10 w-fit">
                         <ShieldAlert size={14} />
-                        <span className="text-[9px] font-black uppercase">Violation</span>
+                        <span className="text-[9px] font-black uppercase tracking-widest">Rule Violation</span>
                       </div>
                     )}
                   </td>
